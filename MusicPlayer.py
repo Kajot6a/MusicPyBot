@@ -23,8 +23,6 @@ class MusicPlayer(commands.Cog,
             'preferredcodec': 'm4a',
             'preferredquality': '140',
         }],
-        'noplaylist': 'False',
-        'outtmpl': 'music_files/%(id)s.m4a',
         'default_search': 'auto',
         'source_address': '0.0.0.0'
     }
@@ -94,6 +92,20 @@ class MusicPlayer(commands.Cog,
                 embed.description = "[" + song['title'] + "](" + song['webpage_url'] + ")"
                 asyncio.run_coroutine_threadsafe(ctx.send(embed=embed), self.bot.loop)
 
+    @commands.command(help='To skip to next song', aliases=['s'])
+    async def skip(self, ctx):
+        voice = get(self.bot.voice_clients, guild=ctx.guild)
+        if voice is not None:
+            if voice.is_playing():
+                await ctx.message.add_reaction('⏭')
+                voice.stop()
+            else:
+                await ctx.message.add_reaction('❓')
+                await ctx.send("I'm not playing anything right now")
+        else:
+            await ctx.message.add_reaction('❓')
+            await ctx.send("I'm not even in voice channel, what do you expect me to do?")
+
     async def run_a_song(self, ctx):
         voice = get(self.bot.voice_clients, guild=ctx.guild)
 
@@ -115,7 +127,6 @@ class MusicPlayer(commands.Cog,
             self.current_song = None
             asyncio.run_coroutine_threadsafe(ctx.send("Nothing else left to play!"), self.bot.loop)
 
-    @classmethod
     async def search_yt(self, arg):
         with YoutubeDL(self.ydl_opts) as ydl:
             if arg[0:4] == "http":
@@ -123,3 +134,51 @@ class MusicPlayer(commands.Cog,
             else:
                 video = ydl.extract_info(f"ytsearch:{arg}", download=False)['entries'][0]
         return video
+
+    @commands.command(help='Stops the song and clears the queue')
+    async def stop(self, ctx):
+        voice = get(self.bot.voice_clients, guild=ctx.guild)
+        if voice is not None:
+            if voice.is_playing():
+                self.song_queue.clear()
+                self.current_song = None
+                await ctx.message.add_reaction('⏹')
+                voice.stop()
+            else:
+                await ctx.message.add_reaction('❓')
+                await ctx.send("I'm not playing anything right now")
+        else:
+            await ctx.message.add_reaction('❓')
+            await ctx.send("I'm not even in voice channel, what do you expect me to do?")
+
+    @commands.command(help='Removes song from queue', aliases=['rm'])
+    async def remove(self, ctx, index):
+        if len(self.song_queue) == 0:
+            await ctx.message.add_reaction('❓')
+            await ctx.send("There is nothing to remove")
+        elif int(index) > len(self.song_queue):
+            await ctx.message.add_reaction('❓')
+            await ctx.send("There's no song with that number in the queue")
+        else:
+            self.song_queue.pop(int(index) - 1)
+            await ctx.message.add_reaction('❌')
+
+    @commands.command(aliases=['q'], help='Shows content of the music queue')
+    async def queue(self, ctx):
+        if len(self.song_queue) == 0 and not self.current_song:
+            await ctx.send("The queue is empty!")
+            await ctx.message.add_reaction('❓')
+            return
+        elif self.current_song:
+            embed = discord.Embed()
+            now = "[" + self.current_song['title'] + "](" + self.current_song['webpage_url'] + ")"
+            embed.add_field(name="Now playing:", value=now, inline=False)
+            i = 1
+            songs = ""
+            for song in self.song_queue:
+                songs += str(i) + ". [" + song['title'] + "](" + song['webpage_url'] + ")\n"
+                i += 1
+            if songs != "":
+                embed.add_field(name="Coming next:", value=songs, inline=False)
+            await ctx.send(embed=embed)
+            await ctx.message.add_reaction('🇶')
